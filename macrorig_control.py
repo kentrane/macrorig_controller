@@ -8,6 +8,7 @@ from serial.tools import list_ports
 import time
 import numpy as np
 from typing import List, Tuple, Optional
+import matplotlib.pyplot as plt
 
 
 class MotorActuator:
@@ -28,6 +29,7 @@ class MotorActuator:
             return True
             
         ports = list_ports.comports()
+        print(f"Available ports: {[port.device for port in ports]}")
         for port, desc, hwid in sorted(ports):
             if hwid == self.act_HWID:
                 print(f"Found act on {port}: {desc}")
@@ -46,11 +48,11 @@ class MotorActuator:
                 except Exception as e:
                     print(f"Failed to connect to {port}: {e}")
                     
-        print("Motor act not found")
+        print("Motor controller not found")
         return False
     
     def disconnect(self) -> None:
-        """Disconnect from motor act."""
+        """Disconnect from motor controller."""
         if self.ser:
             self.ser.close()
             self.connected = False
@@ -119,7 +121,7 @@ class MotorActuator:
             return False
     
     def _wait_for_motion_complete(self, motor: str) -> None:
-        """Wait until specified motor completes motion."""
+        """Wait until specified motor completes motion"""
         while True:
             status = self._send_command(motor, 'RS')
             if 'RS=0' in status:  # Motion complete
@@ -151,9 +153,9 @@ class MotorActuator:
 
 
 class ScanRig:
-    """High-level scanning operations for the macro rig."""
+    """Scanning operations for the macro rig"""
     
-    def __init__(self, act: MotorAct):
+    def __init__(self, act: MotorActuator):
         self.act = act
         self.origin_x = 0
         self.origin_y = 0
@@ -170,37 +172,9 @@ class ScanRig:
         return self.act.move_to(self.origin_x, self.origin_y)
     
     
-    def scan_line_h(self, half_length: float, step_size: float = 1.0) -> List[Tuple[float, float]]:
-        """
-        Generate coordinates for horizontal line scan.
-        
-        Args:
-            half_length: Distance from center to each end
-            step_size: Step size in mm
-            
-        Returns:
-            List of (x, y) coordinates relative to origin
-        """
-        steps = np.arange(-half_length, half_length + step_size, step_size)
-        return [(self.origin_x + step, self.origin_y) for step in steps]
-    
-    def scan_line_v(self, half_length: float, step_size: float = 1.0) -> List[Tuple[float, float]]:
-        """
-        Generate coordinates for vertical line scan.
-        
-        Args:
-            half_length: Distance from center to each end  
-            step_size: Step size in mm
-            
-        Returns:
-            List of (x, y) coordinates relative to origin
-        """
-        steps = np.arange(-half_length, half_length + step_size, step_size)
-        return [(self.origin_x, self.origin_y + step) for step in steps]
-    
     def scan_circle(self, radius: float, step_x: float = 1.0, step_y: float = 1.0) -> List[Tuple[float, float]]:
         """
-        Generate coordinates for circular scan pattern.
+        Generate coordinates for circular scan pattern not sure if useful though.
         
         Args:
             radius: Radius of circle in mm
@@ -261,19 +235,6 @@ class ScanRig:
         
         return coordinates
     
-    def scan_square(self, size: float, step_size: float = 1.0) -> List[Tuple[float, float]]:
-        """
-        Generate coordinates for square scan pattern.
-        
-        Args:
-            size: Side length of square in mm
-            step_size: Step size in mm for both X and Y
-            
-        Returns:
-            List of (x, y) coordinates in scan pattern
-        """
-        return self.scan_rectangle(size, size, step_size, step_size)
-    
     def execute_scan(self, coordinates: List[Tuple[float, float]], 
                     dwell_time: float = 1.0) -> bool:
         """
@@ -326,63 +287,98 @@ class ScanRig:
             (self.origin_x, self.origin_y - half_height),      # Bottom
         ]
         
-        print("Testing boundary movements:")
+        print("Testing if bro respecting boundaries:")
         for i, (x, y) in enumerate(test_points):
             print(f"  Point {i+1}: ({x}, {y})")
+            #Maybe have some slower speed possible here?
             if not self.act.move_to(x, y):
                 return False
-            time.sleep(1.5)
+            time.sleep(1.5) # wait a bit here
         
-        # Return to origin
+        # Test done, now go back to origin
         return self.move_to_origin()
+
+
+def plot_scan_coordinates(coordinates: List[Tuple[float, float]], title: str = "Scan Pattern") -> None:
+    """
+    Plot the scan coordinates to visualize the pattern.
+    
+    Args:
+        coordinates: List of (x, y) coordinates to plot
+        title: Title for the plot
+    """
+    x_coords = [coord[0] for coord in coordinates]
+    y_coords = [coord[1] for coord in coordinates]
+    plt.figure(figsize=(10, 8))
+    
+    # Plot the scan path with lines connecting points
+    plt.plot(x_coords, y_coords, 'b-', alpha=0.5, linewidth=1, label='Scan path')
+    
+    # Plot the scan points
+    plt.scatter(x_coords, y_coords, c=range(len(coordinates)), cmap='viridis', 
+               s=30, alpha=0.8, label='Scan points')
+    
+    # Mark start and end points
+    plt.scatter(x_coords[0], y_coords[0], c='red', s=100, marker='o', 
+               label='Start', edgecolors='black', linewidth=2)
+    plt.scatter(x_coords[-1], y_coords[-1], c='green', s=100, marker='s', 
+               label='End', edgecolors='black', linewidth=2)
+    
+    plt.xlabel('X Position (mm)')
+    plt.ylabel('Y Position (mm)')
+    plt.title(f'{title} - {len(coordinates)} points')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.axis('equal')
+    
+    plt.tight_layout()
+    plt.show()
 
 
 def main():
     """Example usage of the macro rig controller."""
     
-    # Initialize hardware
-    act = MotorAct()
-    if not act.connect():
-        return
+    # # Initialize hardware
+    act = MotorActuator()
+    # if not act.connect():
+    #     print("I try to connect, but it no want")
+    #     print("maybe check cables or something")
+    #     return
+    # print("Connected to motor controller :)")
     
-    if not act.setup_motors():
-        act.disconnect()
-        return
+    # if not act.setup_motors():
+    #     print("Motor controller setup failed :( I disconnect now ok?")
+    #     act.disconnect()
+    #     return
+    # print("Motor controller is setup")
     
-    # Initialize scanning system
     rig = ScanRig(act)
-    rig.set_origin(904, 620)  # Example origin
+
+    # rig.set_origin(904, 620)  # set some origin (x,y)
     
     try:
-        # Test basic movements
-        print("Testing basic movements...")
-        rig.move_to_origin()
-        rig.test_boundaries(width=20, height=15)  # Test 20x15mm area
-        
-        # Horizontal line scan
-        h_coords = rig.scan_line_h(half_length=10, step_size=2)
-        print(f"Horizontal line: {len(h_coords)} points")
-        
-        # Rectangular scan (20mm x 15mm)
-        rect_coords = rig.scan_rectangle(width=20, height=15, step_x=2, step_y=1.5)
+        #rig.move_to_origin()
+
+        #Before testing, maybe rethink this function
+        #rig.test_boundaries(width=20, height=15)  # Test 20x15mm area
+
+        rect_coords = rig.scan_rectangle(width=20, height=15, step_x=2, step_y=2)
         print(f"Rectangle scan: {len(rect_coords)} points")
+        circle_scan = rig.scan_circle(radius=10, step_x=2, step_y=2)
+        # Plot the scan pattern
+        plot_scan_coordinates(circle_scan, "circle Scan Pattern")
         
-        # Square scan (20mm x 20mm)
-        square_coords = rig.scan_square(size=20, step_size=2)
-        print(f"Square scan: {len(square_coords)} points")
-        
-        # Circular scan (radius=10mm)
-        circle_coords = rig.scan_circle(radius=10, step_x=2, step_y=2)
-        print(f"Circular scan: {len(circle_coords)} points")
-        
-        # Execute a small test scan
-        print("\nExecuting test horizontal scan...")
-        test_coords = rig.scan_line_h(half_length=5, step_size=1)
-        rig.execute_scan(test_coords, dwell_time=0.5)
+        prompt = input("do the scan? (y/n): ")
+        if prompt.lower() == 'y':
+            print("doing scan")
+            #rig.execute_scan(rect_coords, dwell_time=0.5)
+
+        else:
+            print("okokok, no scan")
         
     finally:
-        rig.move_to_origin()
-        act.disconnect()
+        #rig.move_to_origin()
+        #act.disconnect()
         print("\nfini!")
 
 
