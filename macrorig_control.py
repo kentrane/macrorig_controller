@@ -287,7 +287,7 @@ class ScanRig:
             (self.origin_x, self.origin_y - half_height),      # Bottom
         ]
         
-        print("Testing if bro respecting boundaries:")
+        #print("Testing if bro respecting boundaries:")
         for i, (x, y) in enumerate(test_points):
             print(f"  Point {i+1}: ({x}, {y})")
             #Maybe have some slower speed possible here?
