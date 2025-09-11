@@ -1,6 +1,6 @@
 """
 PPFE Macro Rig Controller
-Author: Kenneth, based on script by Stig Jensen
+Author: Kenneth, based on original script by Stig Jensen
 """
 
 import serial
@@ -10,10 +10,7 @@ import numpy as np
 from typing import List, Tuple, Optional
 import matplotlib.pyplot as plt
 
-
 class MotorActuator:
-    """Controls XY positioning motors via serial communication."""
-    
     # Hardware identifier for the actuator controller
     act_HWID = 'USB VID:PID=0403:6001 SER=FT4PZ8BBA'
     
@@ -23,7 +20,6 @@ class MotorActuator:
         self.ser: Optional[serial.Serial] = None
         
     def connect(self) -> bool:
-        """Connect to the motor actuator via serial port."""
         if self.connected:
             print("Already connected to actuator controller")
             return True
@@ -52,14 +48,12 @@ class MotorActuator:
         return False
     
     def disconnect(self) -> None:
-        """Disconnect from motor controller."""
         if self.ser:
             self.ser.close()
             self.connected = False
             self.setup_complete = False
     
     def _send_command(self, motor: str, command: str) -> str:
-        """Send command to specific motor and return response."""
         if not self.connected or not self.ser:
             raise RuntimeError("act not connected")
             
@@ -69,7 +63,6 @@ class MotorActuator:
         return response.decode('ascii').strip()
     
     def setup_motors(self) -> bool:
-        """Initialize both X and Y motors with required parameters."""
         if self.setup_complete:
             print("Motors already set up")
             return True
@@ -121,7 +114,6 @@ class MotorActuator:
             return False
     
     def _wait_for_motion_complete(self, motor: str) -> None:
-        """Wait until specified motor completes motion"""
         while True:
             status = self._send_command(motor, 'RS')
             if 'RS=0' in status:  # Motion complete
@@ -129,7 +121,6 @@ class MotorActuator:
             time.sleep(0.1) # don't run too fast
     
     def move_to(self, x: float, y: float) -> bool:
-        """Move to absolute XY coordinates in mm."""
         if not self.setup_complete:
             print("Motors not set up")
             return False
@@ -151,39 +142,23 @@ class MotorActuator:
             print(f"Move failed: {e}")
             return False
 
-
 class ScanRig:
-    """Scanning operations for the macro rig"""
-    
     def __init__(self, act: MotorActuator):
         self.act = act
         self.origin_x = 0
         self.origin_y = 0
         
     def set_origin(self, x: float, y: float) -> None:
-        """Set the center point for scanning operations."""
         self.origin_x = x
         self.origin_y = y
         print(f"Origin set to ({x}, {y})")
     
     
     def move_to_origin(self) -> bool:
-        """Move act to the defined origin point."""
         return self.act.move_to(self.origin_x, self.origin_y)
     
     
     def scan_circle(self, radius: float, step_x: float = 1.0, step_y: float = 1.0) -> List[Tuple[float, float]]:
-        """
-        Generate coordinates for circular scan pattern not sure if useful though.
-        
-        Args:
-            radius: Radius of circle in mm
-            step_x: X-axis step size in mm
-            step_y: Y-axis step size in mm
-            
-        Returns:
-            List of (x, y) coordinates within circular boundary
-        """
         coordinates = []
         
         # Generate y-range (reversed due to act setup)
@@ -201,18 +176,6 @@ class ScanRig:
         return coordinates
     
     def scan_rectangle(self, width: float, height: float, step_x: float = 1.0, step_y: float = 1.0) -> List[Tuple[float, float]]:
-        """
-        Generate coordinates for rectangular scan pattern.
-        
-        Args:
-            width: Total width of rectangle in mm
-            height: Total height of rectangle in mm  
-            step_x: Step size in X direction in mm
-            step_y: Step size in Y direction in mm
-            
-        Returns:
-            List of (x, y) coordinates in raster scan pattern
-        """
         coordinates = []
         
         # Calculate half dimensions for centering
@@ -235,18 +198,7 @@ class ScanRig:
         
         return coordinates
     
-    def execute_scan(self, coordinates: List[Tuple[float, float]], 
-                    dwell_time: float = 1.0) -> bool:
-        """
-        Execute a scan by moving to each coordinate.
-        
-        Args:
-            coordinates: List of (x, y) positions to visit
-            dwell_time: Time to wait at each position in seconds
-            
-        Returns:
-            True if scan completed successfully
-        """
+    def execute_scan(self, coordinates: List[Tuple[float, float]], dwell_time: float = 1.0) -> bool:
         if not coordinates:
             print("No coordinates provided")
             return False
@@ -270,12 +222,6 @@ class ScanRig:
         return True
     
     def test_boundaries(self, width: float, height: float) -> bool:
-        """Test movement to rectangular scan boundaries.
-        
-        Args:
-            width: Width of test rectangle in mm
-            height: Height of test rectangle in mm
-        """
         half_width = width / 2
         half_height = height / 2
         
@@ -287,7 +233,7 @@ class ScanRig:
             (self.origin_x, self.origin_y - half_height),      # Bottom
         ]
         
-        #print("Testing if bro respecting boundaries:")
+        #print("Testing if bro is respecting boundaries:")
         for i, (x, y) in enumerate(test_points):
             print(f"  Point {i+1}: ({x}, {y})")
             #Maybe have some slower speed possible here?
@@ -299,50 +245,52 @@ class ScanRig:
         return self.move_to_origin()
 
 
-def plot_scan_coordinates(coordinates: List[Tuple[float, float]], title: str = "Scan Pattern") -> None:
-    """
-    Plot the scan coordinates to visualize the pattern.
+def calculate_scan_time(num_points: int, movement_time: float, dwell_time: float) -> float:
+    return num_points * movement_time + num_points * dwell_time
+
+
+def format_time(seconds: float) -> str:
+    total_seconds = int(seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
     
-    Args:
-        coordinates: List of (x, y) coordinates to plot
-        title: Title for the plot
-    """
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    elif minutes > 0:
+        return f"{minutes}:{secs:02d}"
+    else:
+        return f"{secs}s"
+
+
+def plot_scan_coordinates(coordinates: List[Tuple[float, float]], title: str = "Scan Pattern", scan_time: float = None) -> None:
     x_coords = [coord[0] for coord in coordinates]
     y_coords = [coord[1] for coord in coordinates]
     plt.figure(figsize=(10, 8))
-    
-    # Plot the scan path with lines connecting points
-    plt.plot(x_coords, y_coords, 'b-', alpha=0.5, linewidth=1, label='Scan path')
-    
-    # Plot the scan points
-    plt.scatter(x_coords, y_coords, c=range(len(coordinates)), cmap='viridis', 
-               s=30, alpha=0.8, label='Scan points')
-    
-    # Mark start and end points
-    plt.scatter(x_coords[0], y_coords[0], c='red', s=100, marker='o', 
-               label='Start', edgecolors='black', linewidth=2)
-    plt.scatter(x_coords[-1], y_coords[-1], c='green', s=100, marker='s', 
-               label='End', edgecolors='black', linewidth=2)
+    plt.plot(x_coords, y_coords, 'g--', alpha=0.5, linewidth=1, label='Scan path')
+    plt.scatter(x_coords, y_coords, c=range(len(coordinates)), label='Scan points')
+    plt.scatter(x_coords[0], y_coords[0], c='red', marker='o', label='Start')
+    plt.scatter(x_coords[-1], y_coords[-1], c='green', marker='s', label='End')
     
     plt.xlabel('X Position (mm)')
     plt.ylabel('Y Position (mm)')
-    plt.title(f'{title} - {len(coordinates)} points')
+    title_text = f'{title} - {len(coordinates)} points'
+    if scan_time is not None:
+        title_text += f' (Est. {format_time(scan_time)})'
+    plt.title(title_text)
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.axis('equal')
-    
     plt.tight_layout()
     plt.show()
 
 
 def main():
-    """Example usage of the macro rig controller."""
-    
     # # Initialize hardware
     act = MotorActuator()
     # if not act.connect():
     #     print("I try to connect, but it no want")
-    #     print("maybe check cables or something")
+    #     print("maybe check the cables")
     #     return
     # print("Connected to motor controller :)")
     
@@ -362,11 +310,16 @@ def main():
         #Before testing, maybe rethink this function
         #rig.test_boundaries(width=20, height=15)  # Test 20x15mm area
 
-        rect_coords = rig.scan_rectangle(width=20, height=15, step_x=2, step_y=2)
-        print(f"Rectangle scan: {len(rect_coords)} points")
-        circle_scan = rig.scan_circle(radius=10, step_x=2, step_y=2)
+        scan_pattern = rig.scan_rectangle(width=20, height=15, step_x=2, step_y=2)
+        print(f"scan: {len(scan_pattern)} points")
+        
+        # Calculate estimated scan time
+        estimated_time = calculate_scan_time(len(scan_pattern), movement_time=1, dwell_time=0.5)
+        print(f"Estimated scan time: {format_time(estimated_time)}")
+        
+        #scan_pattern = rig.scan_circle(radius=10, step_x=2, step_y=2)
         # Plot the scan pattern
-        plot_scan_coordinates(circle_scan, "circle Scan Pattern")
+        plot_scan_coordinates(scan_pattern, "scan pattern", estimated_time)
         
         prompt = input("do the scan? (y/n): ")
         if prompt.lower() == 'y':
