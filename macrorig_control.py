@@ -7,11 +7,14 @@ import serial
 from serial.tools import list_ports
 import time
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+from ni_daq_reader import NIDAQReader
 
-class MotorActuator:
-    # Hardware identifier for the actuator controller
+class MotorController:
+    # Hardware identifier for the stepper controller
     act_HWID = 'USB VID:PID=0403:6001 SER=FT4PZ8BBA'
     
     def __init__(self):
@@ -21,7 +24,7 @@ class MotorActuator:
         
     def connect(self) -> bool:
         if self.connected:
-            print("Already connected to actuator controller")
+            print("Already connected to stepper controller")
             return True
             
         ports = list_ports.comports()
@@ -143,8 +146,9 @@ class MotorActuator:
             return False
 
 class ScanRig:
-    def __init__(self, act: MotorActuator):
+    def __init__(self, act: MotorController, daq: Optional[NIDAQReader] = None):
         self.act = act
+        self.daq = daq
         self.origin_x = 0
         self.origin_y = 0
         
@@ -198,18 +202,47 @@ class ScanRig:
         
         return coordinates
     
-    def execute_scan(self, coordinates: List[Tuple[float, float]], dwell_time: float = 1.0) -> bool:
+    def execute_scan(self, coordinates: List[Tuple[float, float]], 
+                    dwell_time: float = 1.0, 
+                    daq_channel: int = 0,
+                    acquisition_time: float = 0.1,
+                    filter_type: str = "mean",
+                    live_plot: bool = False) -> List[Dict]:
         if not coordinates:
             print("No coordinates provided")
-            return False
+            return []
+            
+        if not self.daq:
+            print("ERROR: DAQ not connected. Cannot perform scan without DAQ readings.")
+            return []
             
         print(f"Starting scan of {len(coordinates)} points")
+        scan_data = []  # Local dataset
+        
+        # Setup live plotting if requested
+        if live_plot:
+            plt.ion()  # Interactive mode on
+            fig, ax = plt.subplots(figsize=(10, 8))
+            ax.set_xlabel('X Position (mm)')
+            ax.set_ylabel('Y Position (mm)')
+            ax.set_title('Scan Data')
+            ax.grid(True, alpha=0.3)
+            
+            # Plot scan path
+            x_path = [coord[0] for coord in coordinates]
+            y_path = [coord[1] for coord in coordinates]
+            ax.plot(x_path, y_path, 'k--', alpha=0.3, linewidth=1, label='Scan path')
+            
+            # Initialize empty scatter plot for data points
+            scat = ax.scatter([], [], c=[], cmap='viridis', s=50, alpha=0.8)
+            ax.legend()
+            plt.draw()
         
         first_move = True
         for i, (x, y) in enumerate(coordinates):
             if not self.act.move_to(x, y):
                 print(f"Failed to move to position {i}: ({x}, {y})")
-                return False
+                return scan_data  # Return partial data
                 
             # Extra settling time for first move
             if first_move:
@@ -217,9 +250,52 @@ class ScanRig:
                 first_move = False
             
             time.sleep(dwell_time)
+            
+            # Take DAQ reading
+            try:
+                daq_value = self.daq.read_analog_filtered(
+                    channel=daq_channel,
+                    acquisition_time=acquisition_time,
+                    filter_type=filter_type
+                )
+                print(f"Point {i+1}/{len(coordinates)}: ({x:.1f}, {y:.1f}) -> {daq_value:.4f}V")
+            except Exception as e:
+                print(f"DAQ read failed at point {i}: {e}")
+                return scan_data  # Return partial data on DAQ failure
+            
+            # Store data point
+            data_point = {
+                'point_index': i,
+                'x': x,
+                'y': y,
+                'daq_value': daq_value
+            }
+            scan_data.append(data_point)
+            
+            # Update live plot if enabled
+            if live_plot:
+                x_vals = [point['x'] for point in scan_data]
+                y_vals = [point['y'] for point in scan_data]
+                daq_vals = [point['daq_value'] for point in scan_data]
+                
+                # Clear and redraw scatter plot with new data
+                scat.remove()
+                scat = ax.scatter(x_vals, y_vals, c=daq_vals, cmap='viridis', s=50, alpha=0.8)
+                
+                # Update colorbar on first point or if range changes significantly  
+                if i == 0 or (i > 0 and (max(daq_vals) - min(daq_vals)) > 0.1):
+                    if hasattr(ax, 'cbar'):
+                        ax.cbar.remove()
+                    ax.cbar = plt.colorbar(scat, ax=ax, label='DAQ Value (V)')
+                
+                plt.draw()
+                plt.pause(0.01)  # Small pause for plot update
         
+        if live_plot:
+            plt.ioff()  # Turn off interactive mode
+            
         print("Scan completed")
-        return True
+        return scan_data
     
     def test_boundaries(self, width: float, height: float) -> bool:
         half_width = width / 2
@@ -243,12 +319,32 @@ class ScanRig:
         
         # Test done, now go back to origin
         return self.move_to_origin()
-
-
+    
+    def save_scan_data(self, scan_data: List[Dict], filename: str) -> bool:
+        """Save scan data to CSV file"""
+        if not scan_data:
+            print("No scan data to save")
+            return False
+            
+        try:
+            import csv
+            with open(filename, 'w', newline='') as csvfile:
+                fieldnames = ['point_index', 'x', 'y', 'daq_value']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(scan_data)
+            
+            print(f"Scan data saved to {filename}")
+            return True
+        except Exception as e:
+            print(f"Failed to save scan data: {e}")
+            return False
+    
+#Calculates scan time in seconds based on number of points, movement time per point, and dwell time per point
 def calculate_scan_time(num_points: int, movement_time: float, dwell_time: float) -> float:
     return num_points * movement_time + num_points * dwell_time
 
-
+#Formats time in seconds to a more readable format (H:MM:SS or M:SS or SSs)
 def format_time(seconds: float) -> str:
     total_seconds = int(seconds)
     hours = total_seconds // 3600
@@ -263,11 +359,46 @@ def format_time(seconds: float) -> str:
         return f"{secs}s"
 
 
+def plot_scan_data(scan_data: List[Dict], title: str = "Scan Data") -> None:
+    """Plot scan data with DAQ values as color-coded points"""
+    if not scan_data:
+        print("No scan data to plot")
+        return
+    
+    x_vals = [point['x'] for point in scan_data]
+    y_vals = [point['y'] for point in scan_data]
+    daq_vals = [point['daq_value'] for point in scan_data]
+    
+    plt.figure(figsize=(12, 10))
+    
+    # Create scatter plot with color mapping
+    scatter = plt.scatter(x_vals, y_vals, c=daq_vals, cmap='viridis', s=100, alpha=0.8, edgecolors='black', linewidth=0.5)
+    
+    # Add colorbar
+    cbar = plt.colorbar(scatter, label='DAQ Value (V)')
+    cbar.ax.tick_params(labelsize=10)
+    
+    # Plot scan path
+    plt.plot(x_vals, y_vals, 'k--', alpha=0.3, linewidth=1, label='Scan path')
+    
+    # Mark start and end points
+    plt.scatter(x_vals[0], y_vals[0], c='red', marker='o', s=150, label='Start', edgecolors='black', linewidth=2)
+    plt.scatter(x_vals[-1], y_vals[-1], c='green', marker='s', s=150, label='End', edgecolors='black', linewidth=2)
+    
+    plt.xlabel('X Position (mm)', fontsize=12)
+    plt.ylabel('Y Position (mm)', fontsize=12)
+    plt.title(f'{title} - {len(scan_data)} points\nDAQ Range: {min(daq_vals):.4f}V to {max(daq_vals):.4f}V', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.axis('equal')
+    plt.tight_layout()
+    plt.show()
+
 def plot_scan_coordinates(coordinates: List[Tuple[float, float]], title: str = "Scan Pattern", scan_time: float = None) -> None:
     x_coords = [coord[0] for coord in coordinates]
     y_coords = [coord[1] for coord in coordinates]
     plt.figure(figsize=(10, 8))
-    plt.plot(x_coords, y_coords, 'g--', alpha=0.5, linewidth=1, label='Scan path')
+    plt.plot(x_coords, y_coords, 'm--', alpha=0.5, linewidth=1, label='Scan path')
     plt.scatter(x_coords, y_coords, c=range(len(coordinates)), label='Scan points')
     plt.scatter(x_coords[0], y_coords[0], c='red', marker='o', label='Start')
     plt.scatter(x_coords[-1], y_coords[-1], c='green', marker='s', label='End')
@@ -286,29 +417,37 @@ def plot_scan_coordinates(coordinates: List[Tuple[float, float]], title: str = "
 
 
 def main():
-    # # Initialize hardware
-    act = MotorActuator()
-    # if not act.connect():
-    #     print("I try to connect, but it no want")
-    #     print("maybe check the cables")
-    #     return
-    # print("Connected to motor controller :)")
+    # Initialize hardware
+    act = MotorController()
+    if not act.connect():
+        print("I try to connect, but it no want")
+        print("maybe check the cables")
+        return
+    print("Connected to motor controller :)")
     
-    # if not act.setup_motors():
-    #     print("Motor controller setup failed :( I disconnect now ok?")
-    #     act.disconnect()
-    #     return
-    # print("Motor controller is setup")
+    if not act.setup_motors():
+        print("Motor controller setup failed :( I disconnect now ok?")
+        act.disconnect()
+        return
+    print("Motor controller is setup")
+    daq = None
+    try:
+        daq = NIDAQReader()
+        if daq.connect():
+            print("DAQ connected")
+        else:
+            print("DAQ connection failed, continuing without DAQ")
+            daq = None
+    except Exception as e:
+        print(f"DAQ initialization failed: {e}")
+        daq = None
     
-    rig = ScanRig(act)
+    rig = ScanRig(act, daq)
 
-    # rig.set_origin(904, 620)  # set some origin (x,y)
+    rig.set_origin(904, 620)  # set some origin (x,y)
     
     try:
-        #rig.move_to_origin()
-
-        #Before testing, maybe rethink this function
-        #rig.test_boundaries(width=20, height=15)  # Test 20x15mm area
+        rig.move_to_origin()
 
         scan_pattern = rig.scan_rectangle(width=20, height=15, step_x=2, step_y=2)
         print(f"scan: {len(scan_pattern)} points")
@@ -316,22 +455,24 @@ def main():
         # Calculate estimated scan time
         estimated_time = calculate_scan_time(len(scan_pattern), movement_time=1, dwell_time=0.5)
         print(f"Estimated scan time: {format_time(estimated_time)}")
-        
-        #scan_pattern = rig.scan_circle(radius=10, step_x=2, step_y=2)
+
         # Plot the scan pattern
         plot_scan_coordinates(scan_pattern, "scan pattern", estimated_time)
         
         prompt = input("do the scan? (y/n): ")
         if prompt.lower() == 'y':
             print("doing scan")
-            #rig.execute_scan(rect_coords, dwell_time=0.5)
+            scan_data = rig.execute_scan(scan_pattern, dwell_time=0.5, daq_channel=0, acquisition_time=0.1, live_plot=True)
+            if scan_data:
+                rig.save_scan_data(scan_data, f"scan_data_{int(time.time())}.csv")
+                #plot_scan_data(scan_data, "Completed Scan Results")
 
         else:
             print("okokok, no scan")
         
     finally:
-        #rig.move_to_origin()
-        #act.disconnect()
+        rig.move_to_origin()
+        act.disconnect()
         print("\nfini!")
 
 
