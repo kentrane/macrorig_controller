@@ -206,9 +206,9 @@ def main():
         daq.set_sample_rate(1000)
         while True:
             
-            #filtered_read = daq.read_analog_filtered(0, acquisition_time=0.1, filter_type="mean")
-            single_read = daq.read_single_sample(0) # Read a single sample from AI0
-            print(f"AI0 : {single_read:.4f}V")
+            # Read AI2 as differential input
+            ai2_read = daq.read_single_sample(2, terminal_config=TerminalConfiguration.DIFF)
+            print(f"AI2 (DIFF): {ai2_read:.4f}V")
             print("-" * 40)
             time.sleep(1.0)
             
