@@ -1,63 +1,9 @@
-"""
-PPFE Macro Rig Controller
-Author: Kenneth, based on original script by Stig Jensen
-"""
-
 import time
 import numpy as np
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict
-import matplotlib.pyplot as plt
 from motor_controller import MotorController
 from scan_rig import ScanRig
 from ni_daq_reader import NIDAQReader
-from plotting_utils import plot_scan_data_pcolormesh
-
-
-#Calculates scan time in seconds based on number of points, movement time per point, and dwell time per point
-def calculate_scan_time(num_points: int, movement_time: float, dwell_time: float) -> float:
-    return num_points * movement_time + num_points * dwell_time
-
-#Formats time in seconds to a more readable format (H:MM:SS or M:SS or SSs)
-def format_time(seconds: float) -> str:
-    total_seconds = int(seconds)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    secs = total_seconds % 60
-    
-    if hours > 0:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    elif minutes > 0:
-        return f"{minutes}:{secs:02d}"
-    else:
-        return f"{secs}s"
-
-
-def plot_scan_data(scan_data: List[Dict], title: str = "Scan Data", use_pcolormesh: bool = True) -> None:
-    """Plot scan data using plotting utilities - wrapper for backward compatibility"""
-    plot_scan_data_pcolormesh(scan_data, title=title)
-
-def plot_scan_coordinates(coordinates: List[Tuple[float, float]], title: str = "Scan Pattern", scan_time: Optional[float] = None) -> None:
-    x_coords = [coord[0] for coord in coordinates]
-    y_coords = [coord[1] for coord in coordinates]
-    plt.figure(figsize=(10, 8))
-    plt.plot(x_coords, y_coords, 'm--', alpha=0.5, linewidth=1, label='Scan path')
-    plt.scatter(x_coords, y_coords, c=range(len(coordinates)), label='Scan points')
-    plt.scatter(x_coords[0], y_coords[0], c='red', marker='o', label='Start')
-    plt.scatter(x_coords[-1], y_coords[-1], c='green', marker='s', label='End')
-    
-    plt.xlabel('X Position (mm)')
-    plt.ylabel('Y Position (mm)')
-    title_text = f'{title} - {len(coordinates)} points'
-    if scan_time is not None:
-        title_text += f' (Est. {format_time(scan_time)})'
-    plt.title(title_text)
-    plt.grid(True, alpha=0.3)
-    plt.gca().invert_yaxis()  # Invert Y-axis to match physical coordinates
-    plt.legend()
-    plt.axis('equal')
-    plt.tight_layout()
-    plt.show()
 
 
 def main():
@@ -97,24 +43,12 @@ def main():
     try:
         rig.move_to_origin()
 
-        scan_pattern = rig.scan_rectangle(width=400, height=400, step_x=4, step_y=4)
+        scan_pattern = rig.scan_rectangle(width=100, height=100, step_x=5, step_y=5)
         print(f"scan: {len(scan_pattern)} points")
-        
-        # Calculate estimated scan time
-        estimated_time = calculate_scan_time(len(scan_pattern), movement_time=0.1, dwell_time=0.01)
-        print(f"Estimated scan time: {format_time(estimated_time)}")
-
-        # Plot the scan pattern
-        #plot_scan_coordinates(scan_pattern, "scan pattern", estimated_time)
-        
         prompt = input("do the scan? (y/n): ")
         if prompt.lower() == 'y':
             print("doing scan")
-            scan_data = rig.execute_scan(scan_pattern, dwell_time=0.01, daq_channel=2, acquisition_time=0.01, live_plot=True)
-            if scan_data:
-                timestamp = datetime.now().strftime("%y%m%d_%H_%M_%S")
-                rig.save_scan_data(scan_data, f"scan_data_{timestamp}.csv")
-                #plot_scan_data(scan_data, "Completed Scan Results")
+            scan_data = rig.execute_scan(scan_pattern, dwell_time=0, daq_channel=2, acquisition_time=0.05, live_plot=True)
         else: 
             print("okokok, no scan")
         

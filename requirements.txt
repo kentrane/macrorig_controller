@@ -3,3 +3,4 @@ pyserial
 matplotlib
 nidaqmx
 scipy
+npTDMS

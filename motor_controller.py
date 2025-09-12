@@ -133,11 +133,11 @@ class MotorController:
             print(f"Moving to x:{x}, y:{y}")
             
             # Move X axis
-            self._send_command('1', f'SP={int(x)}')
+            self._send_command('1', f'SP={round(x)}')
             self._wait_for_motion_complete('1')
             
             # Move Y axis  
-            self._send_command('2', f'SP={int(y)}')
+            self._send_command('2', f'SP={round(y)}')
             self._wait_for_motion_complete('2')
             
             return True
