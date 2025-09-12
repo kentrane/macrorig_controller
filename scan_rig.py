@@ -132,11 +132,11 @@ class ScanRig:
             ax.grid(True, alpha=0.3)
             
             # Create initial empty pcolormesh
-            mesh = ax.pcolormesh(Xi, Yi, Zi, cmap='plasma', shading='nearest', alpha=0.8)
+            mesh = ax.pcolormesh(Xi, Yi, Zi, cmap='plasma', shading='nearest', alpha=0.95)
             cbar = plt.colorbar(mesh, ax=ax, label='DAQ Value (V)')
             
             # Show planned scan points as light gray dots
-            ax.scatter(all_x, all_y, c='lightgray', s=30, alpha=0.5, label='Planned points')
+            ax.scatter(all_x, all_y, c='lightgray', s=10, alpha=0.2, label='Planned points')
             ax.legend(loc='upper right')
             
             plt.tight_layout()
@@ -151,7 +151,7 @@ class ScanRig:
                 
             # Extra settling time for first move
             if first_move:
-                time.sleep(2.0)
+                time.sleep(1.0)
                 first_move = False
             
             time.sleep(dwell_time)
@@ -211,31 +211,27 @@ class ScanRig:
                     current_pos_scatter = ax.scatter([x], [y], c='red', s=100, marker='x', 
                                                       linewidths=3, label='Current position')
                     
-                    # Add completed points as white dots (only recent ones to avoid clutter)
-                    if len(scan_data) > 0:
-                        recent_points = scan_data[-min(10, len(scan_data)):]  # Show last 10 points
-                        recent_x = [point['x'] for point in recent_points]
-                        recent_y = [point['y'] for point in recent_points]
-                        
-                        if completed_scatter is not None:
-                            completed_scatter.remove()
-                        completed_scatter = ax.scatter(recent_x, recent_y, c='white', s=20, 
-                                                        alpha=0.9, edgecolors='black', linewidth=0.8,
-                                                        label='Recent points')
-                    
                     plt.draw()
-                    plt.pause(0.01)  # Shorter pause for smoother updates
+                    plt.pause(0.01)
                     
                 except Exception as e:
                     print(f"Live plot update failed: {e}")
         
-        if live_plot:
-            print("Live plot will remain open. Close the plot window manually when done.")
-            # Keep interactive mode on and ensure plot stays visible
-            plt.show(block=False)
-            # Add a final draw to ensure plot is fully rendered
+        if live_plot and ax is not None:
+            # Remove the current position marker after scan is complete
+            if current_pos_scatter is not None:
+                current_pos_scatter.remove()
+                
+            # Update title to show completion
+            ax.set_title(f'Beam Pattern - SCAN COMPLETE ({len(scan_data)} points)')
             plt.draw()
-            plt.pause(0.1)  # Small pause to ensure plot is visible
+            
+            print("Scan completed. Live plot will remain open until you close the window.")
+            print("Close the plot window manually when done viewing the results.")
+            
+            # Turn off interactive mode and show blocking plot
+            plt.ioff()  # Turn off interactive mode
+            plt.show()  # This will block until the plot window is closed
             
         print("Scan completed")
         return scan_data

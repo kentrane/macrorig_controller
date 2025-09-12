@@ -108,5 +108,5 @@ def format_time(seconds: float) -> str:
 
 
 if __name__ == "__main__":
-    scan_data = load_scan_data_from_csv('scan_data_1757599667.csv')
+    scan_data = load_scan_data_from_csv('scan_data_250912_15_11_42.csv')
     plot_scan_data_pcolormesh(scan_data, title="some readings")

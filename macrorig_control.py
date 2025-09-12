@@ -97,11 +97,11 @@ def main():
     try:
         rig.move_to_origin()
 
-        scan_pattern = rig.scan_rectangle(width=100, height=100, step_x=5, step_y=5)
+        scan_pattern = rig.scan_rectangle(width=400, height=400, step_x=4, step_y=4)
         print(f"scan: {len(scan_pattern)} points")
         
         # Calculate estimated scan time
-        estimated_time = calculate_scan_time(len(scan_pattern), movement_time=1, dwell_time=1)
+        estimated_time = calculate_scan_time(len(scan_pattern), movement_time=0.1, dwell_time=0.01)
         print(f"Estimated scan time: {format_time(estimated_time)}")
 
         # Plot the scan pattern
@@ -110,7 +110,7 @@ def main():
         prompt = input("do the scan? (y/n): ")
         if prompt.lower() == 'y':
             print("doing scan")
-            scan_data = rig.execute_scan(scan_pattern, dwell_time=1, daq_channel=2, acquisition_time=0.5, live_plot=True)
+            scan_data = rig.execute_scan(scan_pattern, dwell_time=0.01, daq_channel=2, acquisition_time=0.01, live_plot=True)
             if scan_data:
                 timestamp = datetime.now().strftime("%y%m%d_%H_%M_%S")
                 rig.save_scan_data(scan_data, f"scan_data_{timestamp}.csv")
