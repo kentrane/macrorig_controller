@@ -88,23 +88,60 @@ class ScanRig:
         
         # Setup live plotting if requested
         fig = None
+        ax = None
+        mesh = None
+        Xi = None
+        Yi = None
+        Zi = None
+        current_pos_scatter = None
+        completed_scatter = None
         if live_plot:
             plt.ion()  # Interactive mode on
-            fig, ax = plt.subplots(figsize=(10, 8))
+            fig, ax = plt.subplots(figsize=(12, 10))
             
-            # Setup single plot for beam pattern
+            # Pre-calculate plot bounds from all coordinates
+            all_x = [coord[0] for coord in coordinates]
+            all_y = [coord[1] for coord in coordinates]
+            x_min, x_max = min(all_x), max(all_x)
+            y_min, y_max = min(all_y), max(all_y)
+            
+            # Add small margin to bounds
+            x_margin = (x_max - x_min) * 0.05 if x_max != x_min else 1
+            y_margin = (y_max - y_min) * 0.05 if y_max != y_min else 1
+            x_min -= x_margin
+            x_max += x_margin
+            y_min -= y_margin
+            y_max += y_margin
+            
+            # Create fixed grid for interpolation
+            grid_res = min(50, max(20, len(coordinates) // 2))
+            xi = np.linspace(x_min, x_max, grid_res)
+            yi = np.linspace(y_min, y_max, grid_res)
+            Xi, Yi = np.meshgrid(xi, yi)
+            
+            # Initialize with NaN values (will show as transparent/empty)
+            Zi = np.full_like(Xi, np.nan)
+            
+            # Setup plot with fixed bounds
             ax.set_xlabel('X Position (mm)')
             ax.set_ylabel('Y Position (mm)')
-            ax.set_title('Beam Pattern')
+            ax.set_title(f'Beam Pattern (0/{len(coordinates)} points)')
+            ax.set_xlim(x_min, x_max)
+            ax.set_ylim(y_min, y_max)
             ax.invert_yaxis()  # Invert Y-axis to match physical coordinates
             ax.grid(True, alpha=0.3)
             
-            # Initialize variables for pcolormesh
-            mesh = None
-            cbar = None
+            # Create initial empty pcolormesh
+            mesh = ax.pcolormesh(Xi, Yi, Zi, cmap='plasma', shading='nearest', alpha=0.8)
+            cbar = plt.colorbar(mesh, ax=ax, label='DAQ Value (V)')
+            
+            # Show planned scan points as light gray dots
+            ax.scatter(all_x, all_y, c='lightgray', s=30, alpha=0.5, label='Planned points')
+            ax.legend(loc='upper right')
             
             plt.tight_layout()
             plt.draw()
+            plt.pause(0.01)
         
         first_move = True
         for i, (x, y) in enumerate(coordinates):
@@ -141,60 +178,53 @@ class ScanRig:
             }
             scan_data.append(data_point)
             
-            # Update live plot if enabled (single pcolormesh plot)
-            if live_plot and len(scan_data) > 0 and fig is not None:
+            # Update live plot if enabled
+            if live_plot and fig is not None and ax is not None and mesh is not None:
                 try:
-                    x_vals = [point['x'] for point in scan_data]
-                    y_vals = [point['y'] for point in scan_data]
-                    daq_vals = [point['daq_value'] for point in scan_data]
-                    
-                    # Clear the entire figure to avoid colorbar accumulation
-                    fig.clear()
-                    ax = fig.add_subplot(111)  # Recreate the axes
-                    
-                    ax.set_xlabel('X Position (mm)')
-                    ax.set_ylabel('Y Position (mm)')
+                    # Update title
                     ax.set_title(f'Beam Pattern ({len(scan_data)}/{len(coordinates)} points)')
-                    ax.invert_yaxis()
-                    ax.grid(True, alpha=0.3)
                     
-                    # Create pcolormesh if we have enough points
-                    if len(scan_data) >= 4:
-                        try:
-                            from scipy.interpolate import griddata
-                            
-                            # Create a regular grid for pcolormesh
-                            grid_res = min(30, len(scan_data) * 2)  # Smaller grid for better performance
-                            
-                            xi = np.linspace(min(x_vals), max(x_vals), grid_res)
-                            yi = np.linspace(min(y_vals), max(y_vals), grid_res)
-                            Xi, Yi = np.meshgrid(xi, yi)
-                            
-                            # Interpolate data onto regular grid
-                            Zi = griddata((x_vals, y_vals), daq_vals, (Xi, Yi), 
-                                        method='nearest', fill_value=0)
-                            
-                            # Create pcolormesh
-                            mesh = ax.pcolormesh(Xi, Yi, Zi, cmap='plasma', shading='nearest', alpha=0.8)
-                            
-                            # Add fresh colorbar (no need to manage old ones since we cleared the figure)
-                            plt.colorbar(mesh, ax=ax, label='DAQ Value (V)')
-                            
-                        except Exception as e:
-                            # Fallback to scatter plot
-                            mesh = ax.scatter(x_vals, y_vals, c=daq_vals, cmap='plasma', s=100, alpha=0.8)
-                            plt.colorbar(mesh, ax=ax, label='DAQ Value (V)')
-                    else:
-                        # For few points, use scatter plot
-                        mesh = ax.scatter(x_vals, y_vals, c=daq_vals, cmap='plasma', s=100, alpha=0.8)
-                        plt.colorbar(mesh, ax=ax, label='DAQ Value (V)')
+                    # Update the interpolated data if we have enough points
+                    if len(scan_data) >= 3:
+                        from scipy.interpolate import griddata
+                        
+                        x_vals = [point['x'] for point in scan_data]
+                        y_vals = [point['y'] for point in scan_data]
+                        daq_vals = [point['daq_value'] for point in scan_data]
+                        
+                        # Interpolate current data onto the fixed grid
+                        Zi_new = griddata(
+                            (x_vals, y_vals), daq_vals, (Xi, Yi), 
+                            method='linear', fill_value=np.nan
+                        )
+                        
+                        # Update the mesh data
+                        mesh.set_array(Zi_new.ravel())
+                        
+                        # Update colorbar limits based on current data
+                        vmin, vmax = min(daq_vals), max(daq_vals)
+                        mesh.set_clim(vmin, vmax)
                     
-                    # Add actual data points as small white markers
-                    ax.scatter(x_vals, y_vals, c='white', s=20, alpha=0.9, edgecolors='black', linewidth=0.8)
+                    # Add current scan position as a red dot
+                    if current_pos_scatter is not None:
+                        current_pos_scatter.remove()
+                    current_pos_scatter = ax.scatter([x], [y], c='red', s=100, marker='x', 
+                                                      linewidths=3, label='Current position')
                     
-                    plt.tight_layout()
+                    # Add completed points as white dots (only recent ones to avoid clutter)
+                    if len(scan_data) > 0:
+                        recent_points = scan_data[-min(10, len(scan_data)):]  # Show last 10 points
+                        recent_x = [point['x'] for point in recent_points]
+                        recent_y = [point['y'] for point in recent_points]
+                        
+                        if completed_scatter is not None:
+                            completed_scatter.remove()
+                        completed_scatter = ax.scatter(recent_x, recent_y, c='white', s=20, 
+                                                        alpha=0.9, edgecolors='black', linewidth=0.8,
+                                                        label='Recent points')
+                    
                     plt.draw()
-                    plt.pause(0.02)
+                    plt.pause(0.01)  # Shorter pause for smoother updates
                     
                 except Exception as e:
                     print(f"Live plot update failed: {e}")
