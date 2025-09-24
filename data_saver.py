@@ -1,19 +1,13 @@
+"""DataSaver class for saving scan data in CSV and TDMS formats."""
 import time
 import csv
 from datetime import datetime
 import numpy as np
-try:
-    from nptdms import TdmsWriter, RootObject, GroupObject, ChannelObject
-    TDMS_AVAILABLE = True
-except ImportError:
-    TDMS_AVAILABLE = False
-    print("Warning: npTDMS not available. TDMS saving will be disabled.")
-except Exception as e:
-    TDMS_AVAILABLE = False
-    print(f"Warning: TDMS library has compatibility issues: {e}. TDMS saving will be disabled.")
+from nptdms import TdmsWriter, RootObject, GroupObject, ChannelObject
 
 
 class DataSaver:
+    """Class to save scan data points to CSV and TDMS files."""
     def __init__(self, base_filename, save_formats=None):
         self.base_filename = base_filename
         self.save_formats = save_formats or ['csv', 'tdms']
@@ -22,87 +16,49 @@ class DataSaver:
         self.scan_start_time = None
         self.scan_end_time = None
         self.is_scan_active = False
-        
-        # TDMS streaming writer
         self.tdms_writer = None
         self.tdms_file = None
         self.tdms_initialized = False
-        
     def start_scan(self, metadata=None):
         self.scan_start_time = datetime.now()
         self.scan_data = []
         self.metadata = metadata or {}
         self.is_scan_active = True
-        
         # Add automatic metadata
         self.metadata.update({
             'scan_start_time': self.scan_start_time.isoformat(),
             'scan_start_timestamp': time.time()
         })
-        
         print(f"Starting scan data collection: {self.base_filename}")
-        
-        # Initialize TDMS streaming writer if requested
-        if 'tdms' in self.save_formats and TDMS_AVAILABLE:
+        if 'tdms' in self.save_formats:
             self._initialize_tdms_writer()
-    
     def _initialize_tdms_writer(self):
-        """Initialize TDMS streaming writer"""
-        if not TDMS_AVAILABLE:
-            return
-            
         tdms_filename = f"{self.base_filename}.tdms"
-        
-        try:
-            # Open TDMS file for streaming writes
-            self.tdms_file = open(tdms_filename, 'wb')
-            self.tdms_writer = TdmsWriter(self.tdms_file)
-            
-            # Write initial segment with metadata and structure
-            root_object = RootObject(properties=self.metadata)
-            group_object = GroupObject("ScanData", properties={
-                'description': 'Scan data from PPFE Macro Rig',
-                'channels': 4
-            })
-            
-            # Create empty initial channels to establish structure
-            point_index_channel = ChannelObject("ScanData", "PointIndex", np.array([], dtype=np.int32))
-            x_position_channel = ChannelObject("ScanData", "XPosition", np.array([], dtype=np.float64))
-            y_position_channel = ChannelObject("ScanData", "YPosition", np.array([], dtype=np.float64))
-            daq_value_channel = ChannelObject("ScanData", "DAQValue", np.array([], dtype=np.float64))
-            
-            # Write initial segment with metadata
-            self.tdms_writer.write_segment([
-                root_object,
-                group_object,
-                point_index_channel,
-                x_position_channel,
-                y_position_channel,
-                daq_value_channel
-            ])
-            
-            self.tdms_initialized = True
-            print(f"TDMS streaming writer initialized: {tdms_filename}")
-            
-        except Exception as e:
-            print(f"Failed to initialize TDMS streaming writer: {e}")
-            if self.tdms_writer:
-                self.tdms_writer.close()
-                self.tdms_writer = None
-            if self.tdms_file:
-                self.tdms_file.close()
-                self.tdms_file = None
-            # Remove 'tdms' from save_formats if it fails
-            if 'tdms' in self.save_formats:
-                self.save_formats.remove('tdms')
-    
-    
+        self.tdms_file = open(tdms_filename, 'wb')
+        self.tdms_writer = TdmsWriter(self.tdms_file)
+        root_object = RootObject(properties=self.metadata)
+        group_object = GroupObject("ScanData", properties={
+            'description': 'Scan data from PPFE Macro Rig',
+            'channels': 4
+        })
+        point_index_channel = ChannelObject("ScanData", "PointIndex", np.array([], dtype=np.int32))
+        x_position_channel = ChannelObject("ScanData", "XPosition", np.array([], dtype=np.float64))
+        y_position_channel = ChannelObject("ScanData", "YPosition", np.array([], dtype=np.float64))
+        daq_value_channel = ChannelObject("ScanData", "DAQValue", np.array([], dtype=np.float64))
+        self.tdms_writer.write_segment([
+            root_object,
+            group_object,
+            point_index_channel,
+            x_position_channel,
+            y_position_channel,
+            daq_value_channel
+        ])
+        self.tdms_initialized = True
+        print(f"TDMS streaming writer initialized: {tdms_filename}")
     def add_data_point(self, point_data):
         if not self.is_scan_active:
             print("Warning: Scan not started. Call start_scan() first.")
             return
-            
-        # Add timestamp to data point
         point_data['timestamp'] = time.time()
         point_data['datetime'] = datetime.now().isoformat()
         
@@ -239,11 +195,9 @@ class DataSaver:
         return self.metadata.copy()
     
     def __enter__(self):
-        """Context manager entry"""
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - ensure files are properly closed"""
         if self.is_scan_active:
             self.finish_scan()
         

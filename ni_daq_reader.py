@@ -1,3 +1,4 @@
+"""NI USB DAQ Reader using nidaqmx library for reading analog inputs"""
 import nidaqmx
 from nidaqmx.constants import AcquisitionType, TerminalConfiguration
 import numpy as np
@@ -11,7 +12,7 @@ class NIDAQReader:
         self._sample_rate = 1000.0
         self._buffer_size = 1000
         
-    def connect(self) -> bool:
+    def connect(self):
         try:
             system = nidaqmx.system.System.local()
             devices = [device.name for device in system.devices]
@@ -36,34 +37,29 @@ class NIDAQReader:
         else:
             channel_name = channel
             
-        try:
-            with nidaqmx.Task() as task:
-                task.ai_channels.add_ai_voltage_chan(
-                    channel_name,
-                    terminal_config=terminal_config,
-                    min_val=-10.0,
-                    max_val=10.0
-                )
-                
-                samples_to_read = max(filter_samples, int(self._sample_rate * acquisition_time))
-                task.timing.cfg_samp_clk_timing(
-                    rate=self._sample_rate,
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=samples_to_read
-                )
-                
-                data = task.read(number_of_samples_per_channel=samples_to_read)
-                
-                if isinstance(data, list):
-                    filtered_data = np.array(data)
-                else:
-                    filtered_data = np.array([data])
-                
-                return float(np.mean(filtered_data))
-                
-        except Exception as e:
-            print(f"Read error on {channel_name}: {e}")
-            return 0.0
+        with nidaqmx.Task() as task:
+            task.ai_channels.add_ai_voltage_chan(
+                channel_name,
+                terminal_config=terminal_config,
+                min_val=-10.0,
+                max_val=10.0
+            )
+            
+            samples_to_read = max(filter_samples, int(self._sample_rate * acquisition_time))
+            task.timing.cfg_samp_clk_timing(
+                rate=self._sample_rate,
+                sample_mode=AcquisitionType.FINITE,
+                samps_per_chan=samples_to_read
+            )
+            
+            data = task.read(number_of_samples_per_channel=samples_to_read)
+            
+            if isinstance(data, list):
+                filtered_data = np.array(data)
+            else:
+                filtered_data = np.array([data])
+            
+            return float(np.mean(filtered_data))
     
     def read_analog_multiple(self, channels: List[Union[int, str]], 
                            acquisition_time: float = 0.1,
@@ -77,115 +73,83 @@ class NIDAQReader:
             else:
                 channel_names.append(ch)
         
-        try:
-            with nidaqmx.Task() as task:
-                for ch_name in channel_names:
-                    task.ai_channels.add_ai_voltage_chan(
-                        ch_name,
-                        terminal_config=terminal_config,
-                        min_val=-10.0,
-                        max_val=10.0
-                    )
-                
-                samples_to_read = max(filter_samples, int(self._sample_rate * acquisition_time))
-                task.timing.cfg_samp_clk_timing(
-                    rate=self._sample_rate,
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=samples_to_read
-                )
-                
-                data = task.read(number_of_samples_per_channel=samples_to_read)
-                
-                if len(channel_names) == 1:
-                    return [float(np.mean(data))]
-                
-                results = []
-                for ch_data in data:
-                    results.append(float(np.mean(ch_data)))
-                
-                return results
-                
-        except Exception as e:
-            print(f"Multi-channel read error: {e}")
-            return [0.0] * len(channels)
-    
-    def read_single_sample(self, channel: Union[int, str],
-                         terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
-        
-        if isinstance(channel, int):
-            channel_name = f"{self.device_name}/ai{channel}"
-        else:
-            channel_name = channel
-            
-        try:
-            with nidaqmx.Task() as task:
+        with nidaqmx.Task() as task:
+            for ch_name in channel_names:
                 task.ai_channels.add_ai_voltage_chan(
-                    channel_name,
+                    ch_name,
                     terminal_config=terminal_config,
                     min_val=-10.0,
                     max_val=10.0
                 )
-                
-                data = task.read()
-                return float(data)
-                
-        except Exception as e:
-            print(f"Single sample read error on {channel_name}: {e}")
-            return 0.0
-    
-    def read_analog_filtered(self, channel: Union[int, str],
-                           acquisition_time: float = 1.0,
-                           filter_type: str = "mean",
-                           terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
-        
+            
+            samples_to_read = max(filter_samples, int(self._sample_rate * acquisition_time))
+            task.timing.cfg_samp_clk_timing(
+                rate=self._sample_rate,
+                sample_mode=AcquisitionType.FINITE,
+                samps_per_chan=samples_to_read
+            )
+            
+            data = task.read(number_of_samples_per_channel=samples_to_read)
+            
+            if len(channel_names) == 1:
+                return [float(np.mean(data))]
+            results = []
+            for ch_data in data:
+                results.append(float(np.mean(ch_data)))
+            return results
+    def read_single_sample(self, channel: Union[int, str], terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
+        """Read a single sample from specified channel"""
         if isinstance(channel, int):
             channel_name = f"{self.device_name}/ai{channel}"
         else:
             channel_name = channel
-            
-        try:
-            with nidaqmx.Task() as task:
-                task.ai_channels.add_ai_voltage_chan(
-                    channel_name,
-                    terminal_config=terminal_config,
-                    min_val=-10.0,
-                    max_val=10.0
-                )
-                
-                samples_to_read = int(self._sample_rate * acquisition_time)
-                task.timing.cfg_samp_clk_timing(
-                    rate=self._sample_rate,
-                    sample_mode=AcquisitionType.FINITE,
-                    samps_per_chan=samples_to_read
-                )
-                
-                data = task.read(number_of_samples_per_channel=samples_to_read)
-                data_array = np.array(data)
-                
-                if filter_type == "mean":  # Average of all samples
-                    return float(np.mean(data_array))
-                elif filter_type == "median":  # Middle value, reduces outlier impact
-                    return float(np.median(data_array))
-                elif filter_type == "rms":  # Root mean square, useful for AC signals
-                    return float(np.sqrt(np.mean(data_array**2)))
-                elif filter_type == "std_filtered":  # Removes outliers beyond 2 std dev
-                    mean_val = np.mean(data_array)
-                    std_val = np.std(data_array)
-                    filtered = data_array[np.abs(data_array - mean_val) < 2 * std_val]
-                    return float(np.mean(filtered)) if len(filtered) > 0 else float(mean_val)
-                else:
-                    return float(np.mean(data_array))
-                    
-        except Exception as e:
-            print(f"Filtered read error on {channel_name}: {e}")
-            return 0.0
-    
+        with nidaqmx.Task() as task:
+            task.ai_channels.add_ai_voltage_chan(
+                channel_name,
+                terminal_config=terminal_config,
+                min_val=-10.0,
+                max_val=10.0
+            )
+            data = task.read()
+            return float(data)
+    def read_analog_filtered(self, channel: Union[int, str], acquisition_time: float = 1.0, filter_type: str = "mean", terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
+        """Read analog input with specified filtering method over acquisition time"""
+        if isinstance(channel, int):
+            channel_name = f"{self.device_name}/ai{channel}"
+        else:
+            channel_name = channel
+        with nidaqmx.Task() as task:
+            task.ai_channels.add_ai_voltage_chan(
+                channel_name,
+                terminal_config=terminal_config,
+                min_val=-10.0,
+                max_val=10.0
+            )
+            samples_to_read = int(self._sample_rate * acquisition_time)
+            task.timing.cfg_samp_clk_timing(
+                rate=self._sample_rate,
+                sample_mode=AcquisitionType.FINITE,
+                samps_per_chan=samples_to_read
+            )
+            data = task.read(number_of_samples_per_channel=samples_to_read)
+            data_array = np.array(data)
+            if filter_type == "mean":  # Average of all samples
+                return float(np.mean(data_array))
+            elif filter_type == "median":  # Middle value, reduces outlier impact
+                return float(np.median(data_array))
+            elif filter_type == "rms":  # Root mean square, useful for AC signals
+                return float(np.sqrt(np.mean(data_array**2)))
+            elif filter_type == "std_filtered":  # Removes outliers beyond 2 std dev
+                mean_val = np.mean(data_array)
+                std_val = np.std(data_array)
+                filtered = data_array[np.abs(data_array - mean_val) < 2 * std_val]
+                return float(np.mean(filtered)) if len(filtered) > 0 else float(mean_val)
+            else:
+                return float(np.mean(data_array))
     def set_sample_rate(self, rate: float) -> None:
         self._sample_rate = max(1, min(rate, 250000))  # USB-6001 max rate
-    
     def get_sample_rate(self) -> float:
         return self._sample_rate
-    
     def close(self) -> None:
         if self.task:
             self.task.close()
