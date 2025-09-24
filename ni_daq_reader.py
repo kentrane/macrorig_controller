@@ -6,37 +6,32 @@ from typing import List, Optional, Union, Dict
 import time
 
 class NIDAQReader:
+    """Class to interface with NI USB DAQ devices using nidaqmx"""
     def __init__(self, device_name: str = "Dev1"):
         self.device_name = device_name
         self.task: Optional[nidaqmx.Task] = None
         self._sample_rate = 1000.0
         self._buffer_size = 1000
-        
     def connect(self):
+        """Connect to the specified NI DAQ device"""
         try:
             system = nidaqmx.system.System.local()
             devices = [device.name for device in system.devices]
-            
             if self.device_name not in devices:
                 print(f"Device {self.device_name} not found. Available: {devices}")
                 return False
-                
             print(f"Connected to {self.device_name}")
             return True
         except Exception as e:
             print(f"Connection failed: {e}")
             return False
     
-    def read_analog_single(self, channel: Union[int, str], 
-                          acquisition_time: float = 0.1,
-                          filter_samples: int = 10,
-                          terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
-        
+    def read_analog_single(self, channel: Union[int, str], acquisition_time: float = 0.1, filter_samples: int = 10, terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
+        """Read single analog input with averaging over specified acquisition time"""
         if isinstance(channel, int):
             channel_name = f"{self.device_name}/ai{channel}"
         else:
             channel_name = channel
-            
         with nidaqmx.Task() as task:
             task.ai_channels.add_ai_voltage_chan(
                 channel_name,
@@ -44,16 +39,13 @@ class NIDAQReader:
                 min_val=-10.0,
                 max_val=10.0
             )
-            
             samples_to_read = max(filter_samples, int(self._sample_rate * acquisition_time))
             task.timing.cfg_samp_clk_timing(
                 rate=self._sample_rate,
                 sample_mode=AcquisitionType.FINITE,
                 samps_per_chan=samples_to_read
             )
-            
             data = task.read(number_of_samples_per_channel=samples_to_read)
-            
             if isinstance(data, list):
                 filtered_data = np.array(data)
             else:
@@ -61,18 +53,14 @@ class NIDAQReader:
             
             return float(np.mean(filtered_data))
     
-    def read_analog_multiple(self, channels: List[Union[int, str]], 
-                           acquisition_time: float = 0.1,
-                           filter_samples: int = 10,
-                           terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> List[float]:
-        
+    def read_analog_multiple(self, channels: List[Union[int, str]], acquisition_time: float = 0.1, filter_samples: int = 10, terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> List[float]:
+        """Read multiple analog inputs with averaging over specified acquisition time"""
         channel_names = []
         for ch in channels:
             if isinstance(ch, int):
                 channel_names.append(f"{self.device_name}/ai{ch}")
             else:
                 channel_names.append(ch)
-        
         with nidaqmx.Task() as task:
             for ch_name in channel_names:
                 task.ai_channels.add_ai_voltage_chan(
@@ -81,16 +69,13 @@ class NIDAQReader:
                     min_val=-10.0,
                     max_val=10.0
                 )
-            
             samples_to_read = max(filter_samples, int(self._sample_rate * acquisition_time))
             task.timing.cfg_samp_clk_timing(
                 rate=self._sample_rate,
                 sample_mode=AcquisitionType.FINITE,
                 samps_per_chan=samples_to_read
             )
-            
             data = task.read(number_of_samples_per_channel=samples_to_read)
-            
             if len(channel_names) == 1:
                 return [float(np.mean(data))]
             results = []
@@ -147,15 +132,19 @@ class NIDAQReader:
             else:
                 return float(np.mean(data_array))
     def set_sample_rate(self, rate: float) -> None:
+        """Set the sample rate for analog input readings (1 to 250000 Hz)"""
         self._sample_rate = max(1, min(rate, 250000))  # USB-6001 max rate
     def get_sample_rate(self) -> float:
+        """Get current sample rate setting"""
         return self._sample_rate
     def close(self) -> None:
+        """Close the DAQ task if open"""
         if self.task:
             self.task.close()
             self.task = None
 
 def create_daq_reader(device_name: str = "Dev1") -> NIDAQReader:
+    """Factory function to create and connect NI DAQ reader"""
     reader = NIDAQReader(device_name)
     if reader.connect():
         return reader
@@ -163,6 +152,7 @@ def create_daq_reader(device_name: str = "Dev1") -> NIDAQReader:
         raise ConnectionError(f"Failed to connect to {device_name}")
 
 def main():
+    """Test function to read from NI USB DAQ"""
     try:
         daq = create_daq_reader()
 
