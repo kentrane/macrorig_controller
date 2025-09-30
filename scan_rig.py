@@ -20,11 +20,10 @@ class ScanRig:
         self.origin_x = x
         self.origin_y = y
         print(f"Origin set to ({x}, {y})")
-    
+
     def move_to_origin(self):
         return self.act.move_to(self.origin_x, self.origin_y)
-    
-    
+
     def scan_circle(self, radius, step_x=1.0, step_y=1.0):
         coordinates = []
         y_range = -np.arange(-radius, radius + step_y, step_y)
@@ -36,7 +35,7 @@ class ScanRig:
                 for dx in x_range:
                     coordinates.append((self.origin_x + dx, self.origin_y + dy))
         return coordinates
-    
+
     def scan_rectangle(self, width, height, step_x=1.0, step_y=1.0):
         coordinates = []
         half_width = width / 2
@@ -50,18 +49,18 @@ class ScanRig:
             for dx in x_steps:
                 coordinates.append((self.origin_x + dx, self.origin_y + dy))
         return coordinates
-    
+
     def execute_scan(self, coordinates, dwell_time=1.0, daq_channel=0, 
                     acquisition_time=0.1, filter_type="mean", live_plot=False, 
                     save_formats=None, auto_save=True):
         if not coordinates:
             print("No coordinates provided")
             return []
-            
+
         if not self.daq:
             print("ERROR: DAQ not connected. Cannot perform scan without DAQ readings.")
             return []
-            
+
         print(f"Starting scan of {len(coordinates)} points")
         scan_data = []
         
@@ -84,7 +83,7 @@ class ScanRig:
             }
             data_saver.start_scan(scan_metadata)
             print(f"Auto-saving data to: {save_filename}")
-        
+
         # Setup live plotting if requested
         fig = None
         ax = None
@@ -160,18 +159,18 @@ class ScanRig:
             # Initial draw with minimal pause
             fig.canvas.draw_idle()
             fig.canvas.flush_events()
-        
+
         for i, (x, y) in enumerate(coordinates):
             if not self.act.move_to(x, y):
                 print(f"Failed to move to position {i}: ({x}, {y})")
                 if data_saver:
                     data_saver.finish_scan({'scan_completion_status': 'failed_movement'})
                 return scan_data
-                
+
             if i == 0:
                 time.sleep(1.0)
             time.sleep(dwell_time)
-            
+
             try:
                 daq_value = self.daq.read_analog_filtered(
                     channel=daq_channel,
@@ -185,7 +184,7 @@ class ScanRig:
                 if data_saver:
                     data_saver.finish_scan({'scan_completion_status': 'failed_daq_read'})
                 return scan_data
-            
+
             data_point = {
                 'point_index': i,
                 'x': x,
@@ -195,11 +194,10 @@ class ScanRig:
                 'datetime': datetime.now().isoformat()
             }
             scan_data.append(data_point)
-            
+
             if data_saver:
                 data_saver.add_data_point(data_point)
-            
-            
+
             if live_plot and fig and ax and i % 5 == 0:
                 try:
                     ax.set_title(f'Beam Pattern ({len(scan_data)}/{len(coordinates)} points)')
@@ -215,15 +213,15 @@ class ScanRig:
                                                 method='linear', fill_value=np.nan)
                                 mesh.set_array(Zi_new.ravel())
                                 mesh.set_clim(min(daq_vals), max(daq_vals))
-                            except:
+                            except Exception:
                                 pass
-                    
+
                     ax.scatter([x], [y], c='red', s=100, marker='x')
                     fig.canvas.draw_idle()
                     fig.canvas.flush_events()
                 except Exception as e:
                     print(f"Plot update failed: {e}")
-        
+
         if live_plot and ax:
             ax.set_title(f'Beam Pattern - SCAN COMPLETE ({len(scan_data)} points)')
             if len(scan_data) >= 3 and mesh:
@@ -236,20 +234,17 @@ class ScanRig:
                                   method='linear', fill_value=np.nan)
                 mesh.set_array(Zi_final.ravel())
                 mesh.set_clim(min(daq_vals), max(daq_vals))
-            
+
             if fig:
                 fig.canvas.draw_idle()
                 fig.canvas.flush_events()
-            
-            
+
         if data_saver:
             final_metadata = {
                 'actual_points_collected': len(scan_data),
                 'scan_completion_status': 'completed' if len(scan_data) == len(coordinates) else 'partial'
             }
             data_saver.finish_scan(final_metadata)
-            
+
         print("Scan completed")
         return scan_data
-
-    

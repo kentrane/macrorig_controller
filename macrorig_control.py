@@ -10,20 +10,20 @@ def main():
     # Initialize hardware
     act = MotorController()
     if not act.connect():
-        print("I try to connect, but it no want")
-        print("maybe check the cables")
+        print("Failed to connect to motor controller")
+        print("Check cable connections")
         return
-    print("Connected to motor controller :)")
-    
+    print("Connected to motor controller")
+
     if not act.setup_motors(home_motors=True):
-        print("Motor controller setup failed :( I disconnect now ok?")
+        print("Motor controller setup failed - disconnecting")
         act.disconnect()
         return
-    print("Motor controller is setup")
-    
+    print("Motor controller setup complete")
+
     # Uncomment the next line if you want to manually home motors now:
     # act.home_motors()
-    
+
     daq = None
     try:
         daq = NIDAQReader()
@@ -35,28 +35,28 @@ def main():
     except Exception as e:
         print(f"DAQ initialization failed: {e}")
         daq = None
-    
+
     rig = ScanRig(act, daq)
 
-    rig.set_origin(600, 600)  # set some origin (x,y)
-    
+    rig.set_origin(600, 600)  # Set origin position (x, y)
+
     try:
         rig.move_to_origin()
 
         scan_pattern = rig.scan_rectangle(width=100, height=100, step_x=5, step_y=5)
-        print(f"scan: {len(scan_pattern)} points")
-        prompt = input("do the scan? (y/n): ")
+        print(f"Scan pattern: {len(scan_pattern)} points")
+        prompt = input("Start scan? (y/n): ")
         if prompt.lower() == 'y':
-            print("doing scan")
-            scan_data = rig.execute_scan(scan_pattern, dwell_time=0, daq_channel=2, acquisition_time=0.05, live_plot=True)
-        else: 
-            print("okokok, no scan")
-        
-        
+            print("Starting scan...")
+            scan_data = rig.execute_scan(scan_pattern, dwell_time=0, daq_channel=2,
+                                        acquisition_time=0.05, live_plot=True)
+        else:
+            print("Scan cancelled")
+
     finally:
         rig.move_to_origin()
         act.disconnect()
-        print("\nfini!")
+        print("\nComplete!")
 
 
 if __name__ == "__main__":

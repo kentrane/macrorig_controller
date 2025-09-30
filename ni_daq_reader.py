@@ -1,9 +1,11 @@
-"""NI USB DAQ Reader using nidaqmx library for reading analog inputs"""
+"""NI USB DAQ Reader using nidaqmx library for reading analog inputs."""
+
 import nidaqmx
 from nidaqmx.constants import AcquisitionType, TerminalConfiguration
 import numpy as np
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union
 import time
+
 
 class NIDAQReader:
     """Class to interface with NI USB DAQ devices using nidaqmx"""
@@ -12,6 +14,7 @@ class NIDAQReader:
         self.task: Optional[nidaqmx.Task] = None
         self._sample_rate = 1000.0
         self._buffer_size = 1000
+
     def connect(self):
         """Connect to the specified NI DAQ device"""
         try:
@@ -25,8 +28,10 @@ class NIDAQReader:
         except Exception as e:
             print(f"Connection failed: {e}")
             return False
-    
-    def read_analog_single(self, channel: Union[int, str], acquisition_time: float = 0.1, filter_samples: int = 10, terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
+
+    def read_analog_single(self, channel: Union[int, str], acquisition_time: float = 0.1,
+                           filter_samples: int = 10,
+                           terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
         """Read single analog input with averaging over specified acquisition time"""
         if isinstance(channel, int):
             channel_name = f"{self.device_name}/ai{channel}"
@@ -50,10 +55,12 @@ class NIDAQReader:
                 filtered_data = np.array(data)
             else:
                 filtered_data = np.array([data])
-            
+
             return float(np.mean(filtered_data))
-    
-    def read_analog_multiple(self, channels: List[Union[int, str]], acquisition_time: float = 0.1, filter_samples: int = 10, terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> List[float]:
+
+    def read_analog_multiple(self, channels: List[Union[int, str]], acquisition_time: float = 0.1,
+                             filter_samples: int = 10,
+                             terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> List[float]:
         """Read multiple analog inputs with averaging over specified acquisition time"""
         channel_names = []
         for ch in channels:
@@ -82,7 +89,9 @@ class NIDAQReader:
             for ch_data in data:
                 results.append(float(np.mean(ch_data)))
             return results
-    def read_single_sample(self, channel: Union[int, str], terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
+
+    def read_single_sample(self, channel: Union[int, str],
+                           terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
         """Read a single sample from specified channel"""
         if isinstance(channel, int):
             channel_name = f"{self.device_name}/ai{channel}"
@@ -97,7 +106,10 @@ class NIDAQReader:
             )
             data = task.read()
             return float(data)
-    def read_analog_filtered(self, channel: Union[int, str], acquisition_time: float = 1.0, filter_type: str = "mean", terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
+
+    def read_analog_filtered(self, channel: Union[int, str], acquisition_time: float = 1.0,
+                             filter_type: str = "mean",
+                             terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
         """Read analog input with specified filtering method over acquisition time"""
         if isinstance(channel, int):
             channel_name = f"{self.device_name}/ai{channel}"
@@ -118,6 +130,7 @@ class NIDAQReader:
             )
             data = task.read(number_of_samples_per_channel=samples_to_read)
             data_array = np.array(data)
+
             if filter_type == "mean":  # Average of all samples
                 return float(np.mean(data_array))
             elif filter_type == "median":  # Middle value, reduces outlier impact
@@ -131,17 +144,21 @@ class NIDAQReader:
                 return float(np.mean(filtered)) if len(filtered) > 0 else float(mean_val)
             else:
                 return float(np.mean(data_array))
+
     def set_sample_rate(self, rate: float) -> None:
         """Set the sample rate for analog input readings (1 to 250000 Hz)"""
         self._sample_rate = max(1, min(rate, 250000))  # USB-6001 max rate
+
     def get_sample_rate(self) -> float:
         """Get current sample rate setting"""
         return self._sample_rate
+
     def close(self) -> None:
         """Close the DAQ task if open"""
         if self.task:
             self.task.close()
             self.task = None
+
 
 def create_daq_reader(device_name: str = "Dev1") -> NIDAQReader:
     """Factory function to create and connect NI DAQ reader"""
@@ -151,6 +168,7 @@ def create_daq_reader(device_name: str = "Dev1") -> NIDAQReader:
     else:
         raise ConnectionError(f"Failed to connect to {device_name}")
 
+
 def main():
     """Test function to read from NI USB DAQ"""
     try:
@@ -159,13 +177,12 @@ def main():
         print("NI USB DAQ Reader Test - Press Ctrl+C to stop")
         daq.set_sample_rate(1000)
         while True:
-            
             # Read AI2 as differential input
             ai2_read = daq.read_single_sample(2, terminal_config=TerminalConfiguration.DIFF)
             print(f"AI2 (DIFF): {ai2_read:.4f}V")
             print("-" * 40)
             time.sleep(1.0)
-            
+
     except KeyboardInterrupt:
         print("\nStopped by user")
     except Exception as e:
@@ -173,6 +190,7 @@ def main():
     finally:
         if 'daq' in locals():
             daq.close()
+
 
 if __name__ == "__main__":
     main()
