@@ -38,23 +38,42 @@ def main():
 
     rig = ScanRig(motor_controller, daq)
 
-    rig.set_origin(600, 600)  # Set origin position (x, y)
+    # Ask user what they want to do
+    print("\n" + "="*60)
+    print("MACRORIG CONTROLLER")
+    print("="*60)
+    print("\nOptions:")
+    print("  1. Interactive manual control mode")
+    print("  2. Run automated scan")
+    choice = input("\nSelect option (1 or 2): ").strip()
 
     try:
-        rig.move_to_origin()
+        if choice == '1':
+            # Enter interactive manual control mode
+            motor_controller.interactive_mode()
 
-        scan_pattern = rig.scan_rectangle(width=100, height=100, step_x=5, step_y=5)
-        print(f"Scan pattern: {len(scan_pattern)} points")
-        prompt = input("Start scan? (y/n): ")
-        if prompt.lower() == 'y':
-            print("Starting scan...")
-            scan_data = rig.execute_scan(scan_pattern, dwell_time=0, daq_channel=2,
-                                        acquisition_time=0.05, live_plot=True)
+        elif choice == '2':
+            # Run automated scan
+            rig.set_origin(600, 600)  # Set origin position (x, y)
+            rig.move_to_origin()
+
+            scan_pattern = rig.scan_rectangle(width=100, height=100, step_x=5, step_y=5)
+            print(f"Scan pattern: {len(scan_pattern)} points")
+            prompt = input("Start scan? (y/n): ")
+            if prompt.lower() == 'y':
+                print("Starting scan...")
+                scan_data = rig.execute_scan(scan_pattern, dwell_time=0, daq_channel=2,
+                                            acquisition_time=0.05, live_plot=True)
+            else:
+                print("Scan cancelled")
+
+            # Return to origin after scan
+            rig.move_to_origin()
+
         else:
-            print("Scan cancelled")
+            print("Invalid option selected")
 
     finally:
-        rig.move_to_origin()
         motor_controller.disconnect()
         print("\nComplete!")
 
