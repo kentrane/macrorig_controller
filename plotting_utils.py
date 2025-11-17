@@ -35,15 +35,17 @@ def plot_scan_data_pcolormesh(scan_data, title="Scan Data", figsize=(12, 10), cm
 
     if len(scan_data) >= 4:
         grid_res = min(grid_resolution, len(scan_data) * 2)
-        xi = np.linspace(min(x_vals), max(x_vals), grid_res)
-        yi = np.linspace(min(y_vals), max(y_vals), grid_res)
-        Xi, Yi = np.meshgrid(xi, yi)
+        grid_x = np.linspace(min(x_vals), max(x_vals), grid_res)
+        grid_y = np.linspace(min(y_vals), max(y_vals), grid_res)
+        grid_x_mesh, grid_y_mesh = np.meshgrid(grid_x, grid_y)
 
         # Interpolate data onto regular grid
-        Zi = griddata((x_vals, y_vals), daq_vals, (Xi, Yi), method='nearest', fill_value=0)
+        grid_values = griddata((x_vals, y_vals), daq_vals, (grid_x_mesh, grid_y_mesh),
+                              method='nearest', fill_value=0)
 
         # Create pcolormesh
-        mesh = ax.pcolormesh(Xi, Yi, Zi, cmap=cmap, shading='nearest', alpha=0.8)
+        mesh = ax.pcolormesh(grid_x_mesh, grid_y_mesh, grid_values,
+                            cmap=cmap, shading='nearest', alpha=0.8)
 
         # Add colorbar
         cbar = plt.colorbar(mesh, ax=ax, label='DAQ Value (V)')

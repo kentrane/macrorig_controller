@@ -8,21 +8,21 @@ from ni_daq_reader import NIDAQReader
 
 def main():
     # Initialize hardware
-    act = MotorController()
-    if not act.connect():
+    motor_controller = MotorController()
+    if not motor_controller.connect():
         print("Failed to connect to motor controller")
         print("Check cable connections")
         return
     print("Connected to motor controller")
 
-    if not act.setup_motors(home_motors=True):
+    if not motor_controller.setup_motors(home_motors=True):
         print("Motor controller setup failed - disconnecting")
-        act.disconnect()
+        motor_controller.disconnect()
         return
     print("Motor controller setup complete")
 
     # Uncomment the next line if you want to manually home motors now:
-    # act.home_motors()
+    # motor_controller.home_motors()
 
     daq = None
     try:
@@ -36,7 +36,7 @@ def main():
         print(f"DAQ initialization failed: {e}")
         daq = None
 
-    rig = ScanRig(act, daq)
+    rig = ScanRig(motor_controller, daq)
 
     rig.set_origin(600, 600)  # Set origin position (x, y)
 
@@ -55,7 +55,7 @@ def main():
 
     finally:
         rig.move_to_origin()
-        act.disconnect()
+        motor_controller.disconnect()
         print("\nComplete!")
 
 

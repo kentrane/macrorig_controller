@@ -29,14 +29,17 @@ class NIDAQReader:
             print(f"Connection failed: {e}")
             return False
 
+    def _get_channel_name(self, channel: Union[int, str]) -> str:
+        """Convert channel number or name to full channel name"""
+        if isinstance(channel, int):
+            return f"{self.device_name}/ai{channel}"
+        return channel
+
     def read_analog_single(self, channel: Union[int, str], acquisition_time: float = 0.1,
                            filter_samples: int = 10,
                            terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
         """Read single analog input with averaging over specified acquisition time"""
-        if isinstance(channel, int):
-            channel_name = f"{self.device_name}/ai{channel}"
-        else:
-            channel_name = channel
+        channel_name = self._get_channel_name(channel)
         with nidaqmx.Task() as task:
             task.ai_channels.add_ai_voltage_chan(
                 channel_name,
@@ -62,12 +65,7 @@ class NIDAQReader:
                              filter_samples: int = 10,
                              terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> List[float]:
         """Read multiple analog inputs with averaging over specified acquisition time"""
-        channel_names = []
-        for ch in channels:
-            if isinstance(ch, int):
-                channel_names.append(f"{self.device_name}/ai{ch}")
-            else:
-                channel_names.append(ch)
+        channel_names = [self._get_channel_name(ch) for ch in channels]
         with nidaqmx.Task() as task:
             for ch_name in channel_names:
                 task.ai_channels.add_ai_voltage_chan(
@@ -93,10 +91,7 @@ class NIDAQReader:
     def read_single_sample(self, channel: Union[int, str],
                            terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
         """Read a single sample from specified channel"""
-        if isinstance(channel, int):
-            channel_name = f"{self.device_name}/ai{channel}"
-        else:
-            channel_name = channel
+        channel_name = self._get_channel_name(channel)
         with nidaqmx.Task() as task:
             task.ai_channels.add_ai_voltage_chan(
                 channel_name,
@@ -111,10 +106,7 @@ class NIDAQReader:
                              filter_type: str = "mean",
                              terminal_config: TerminalConfiguration = TerminalConfiguration.RSE) -> float:
         """Read analog input with specified filtering method over acquisition time"""
-        if isinstance(channel, int):
-            channel_name = f"{self.device_name}/ai{channel}"
-        else:
-            channel_name = channel
+        channel_name = self._get_channel_name(channel)
         with nidaqmx.Task() as task:
             task.ai_channels.add_ai_voltage_chan(
                 channel_name,

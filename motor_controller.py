@@ -15,7 +15,7 @@ class MotorController:
     def __init__(self):
         self.connected = False
         self.setup_complete = False
-        self.ser: Optional[serial.Serial] = None
+        self.serial_connection: Optional[serial.Serial] = None
 
     def connect(self) -> bool:
         if self.connected:
@@ -28,8 +28,8 @@ class MotorController:
             if hwid == self.ACTUATOR_HWID:
                 print(f"Found actuator on {port}: {desc}")
                 try:
-                    self.ser = serial.Serial(
-                        port, 
+                    self.serial_connection = serial.Serial(
+                        port,
                         baudrate=9600,
                         bytesize=serial.SEVENBITS,
                         stopbits=serial.STOPBITS_ONE,
@@ -46,18 +46,18 @@ class MotorController:
         return False
 
     def disconnect(self) -> None:
-        if self.ser:
-            self.ser.close()
+        if self.serial_connection:
+            self.serial_connection.close()
             self.connected = False
             self.setup_complete = False
 
     def _send_command(self, motor: str, command: str) -> str:
-        if not self.connected or not self.ser:
+        if not self.connected or not self.serial_connection:
             raise RuntimeError("Motor controller not connected")
 
         full_command = f"{motor}{command};"
-        self.ser.write(full_command.encode())
-        response = self.ser.read_until(b'\r')
+        self.serial_connection.write(full_command.encode())
+        response = self.serial_connection.read_until(b'\r')
         return response.decode('ascii').strip()
 
     def setup_motors(self, home_motors: bool = False) -> bool:
@@ -98,12 +98,7 @@ class MotorController:
             if home_motors:
                 print("Homing motors...")
                 for motor in ['1', '2']:
-                    self._send_command(motor, 'R3=VM')  # Save current velocity
-                    self._send_command(motor, 'VM=100') # Set homing velocity
-                    self._send_command(motor, 'SR-')    # Start reverse homing
-                    self._wait_for_motion_complete(motor)
-                    self._send_command(motor, 'VM=R3')  # Restore velocity
-                    self._send_command(motor, 'AP=0')   # Set absolute position to 0
+                    self._home_single_motor(motor, homing_velocity=100)
                 print("Motors homed successfully")
             else:
                 print("Skipping motor homing (home_motors=False)")
@@ -122,6 +117,15 @@ class MotorController:
             if 'RS=0' in status:  # Motion complete
                 break
             time.sleep(0.1)  # Poll interval
+
+    def _home_single_motor(self, motor: str, homing_velocity: int = 100) -> None:
+        """Home a single motor and set its position to 0"""
+        self._send_command(motor, 'R3=VM')  # Save current velocity
+        self._send_command(motor, f'VM={homing_velocity}')  # Set homing velocity
+        self._send_command(motor, 'SR-')  # Start reverse homing
+        self._wait_for_motion_complete(motor)
+        self._send_command(motor, 'VM=R3')  # Restore velocity
+        self._send_command(motor, 'AP=0')  # Set absolute position to 0
 
     def move_to(self, x: float, y: float) -> bool:
         if not self.setup_complete:
@@ -154,12 +158,7 @@ class MotorController:
         try:
             print("Homing motors...")
             for motor in ['1', '2']:
-                self._send_command(motor, 'R3=VM')  # Save current velocity
-                self._send_command(motor, 'VM=100') # Set homing velocity
-                self._send_command(motor, 'SR-')    # Start reverse homing
-                self._wait_for_motion_complete(motor)
-                self._send_command(motor, 'VM=R3')  # Restore velocity
-                self._send_command(motor, 'AP=0')   # Set absolute position to 0
+                self._home_single_motor(motor, homing_velocity=100)
             print("Motors homed successfully")
             return True
         except Exception as e:
