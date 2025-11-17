@@ -16,6 +16,8 @@ class MotorController:
         self.connected = False
         self.setup_complete = False
         self.serial_connection: Optional[serial.Serial] = None
+        self.home_x: float = 0.0
+        self.home_y: float = 0.0
 
     def connect(self) -> bool:
         if self.connected:
@@ -164,3 +166,184 @@ class MotorController:
         except Exception as e:
             print(f"Homing failed: {e}")
             return False
+
+    def get_position(self) -> tuple[float, float]:
+        """Get current position of both motors (x, y)"""
+        if not self.setup_complete:
+            raise RuntimeError("Motors not set up")
+
+        try:
+            # Query absolute position for both motors
+            x_response = self._send_command('1', 'AP?')
+            y_response = self._send_command('2', 'AP?')
+
+            # Parse responses (format: "AP=value")
+            x_pos = float(x_response.split('=')[1])
+            y_pos = float(y_response.split('=')[1])
+
+            return (x_pos, y_pos)
+        except Exception as e:
+            print(f"Failed to get position: {e}")
+            return (0.0, 0.0)
+
+    def move_x(self, x: float) -> bool:
+        """Move only the X axis to specified position"""
+        if not self.setup_complete:
+            print("Motors not set up")
+            return False
+
+        try:
+            print(f"Moving X axis to {x}")
+            self._send_command('1', f'SP={round(x)}')
+            self._wait_for_motion_complete('1')
+            return True
+        except Exception as e:
+            print(f"X move failed: {e}")
+            return False
+
+    def move_y(self, y: float) -> bool:
+        """Move only the Y axis to specified position"""
+        if not self.setup_complete:
+            print("Motors not set up")
+            return False
+
+        try:
+            print(f"Moving Y axis to {y}")
+            self._send_command('2', f'SP={round(y)}')
+            self._wait_for_motion_complete('2')
+            return True
+        except Exception as e:
+            print(f"Y move failed: {e}")
+            return False
+
+    def set_home_position(self, x: float = None, y: float = None) -> bool:
+        """Set current position or specified position as custom home
+
+        Args:
+            x: X coordinate for home (if None, uses current position)
+            y: Y coordinate for home (if None, uses current position)
+        """
+        if not self.setup_complete:
+            print("Motors not set up")
+            return False
+
+        try:
+            if x is None or y is None:
+                # Use current position
+                current_x, current_y = self.get_position()
+                self.home_x = x if x is not None else current_x
+                self.home_y = y if y is not None else current_y
+            else:
+                self.home_x = x
+                self.home_y = y
+
+            print(f"Home position set to X={self.home_x}, Y={self.home_y}")
+            return True
+        except Exception as e:
+            print(f"Failed to set home position: {e}")
+            return False
+
+    def return_to_home(self) -> bool:
+        """Return to the saved custom home position"""
+        if not self.setup_complete:
+            print("Motors not set up")
+            return False
+
+        print(f"Returning to home position (X={self.home_x}, Y={self.home_y})")
+        return self.move_to(self.home_x, self.home_y)
+
+    def interactive_mode(self) -> None:
+        """Start interactive manual control mode"""
+        if not self.setup_complete:
+            print("Motors not set up - please run setup_motors() first")
+            return
+
+        print("\n" + "="*60)
+        print("MANUAL MOTOR CONTROL MODE")
+        print("="*60)
+
+        while True:
+            try:
+                # Show current position
+                x, y = self.get_position()
+                print(f"\nCurrent Position: X={x:.2f}, Y={y:.2f}")
+                print(f"Home Position: X={self.home_x:.2f}, Y={self.home_y:.2f}")
+                print("\nCommands:")
+                print("  1. Move to coordinates (x,y)")
+                print("  2. Move X axis only")
+                print("  3. Move Y axis only")
+                print("  4. Set current position as home")
+                print("  5. Set specific home position")
+                print("  6. Return to home")
+                print("  7. Home motors (find physical home)")
+                print("  8. Get current position")
+                print("  9. Exit interactive mode")
+
+                choice = input("\nEnter command number: ").strip()
+
+                if choice == '1':
+                    coords = input("Enter coordinates as 'x,y': ").strip()
+                    try:
+                        x_str, y_str = coords.split(',')
+                        x_val = float(x_str.strip())
+                        y_val = float(y_str.strip())
+                        self.move_to(x_val, y_val)
+                    except ValueError:
+                        print("Invalid format. Use: x,y (e.g., 100,200)")
+
+                elif choice == '2':
+                    x_input = input("Enter X position: ").strip()
+                    try:
+                        self.move_x(float(x_input))
+                    except ValueError:
+                        print("Invalid number")
+
+                elif choice == '3':
+                    y_input = input("Enter Y position: ").strip()
+                    try:
+                        self.move_y(float(y_input))
+                    except ValueError:
+                        print("Invalid number")
+
+                elif choice == '4':
+                    self.set_home_position()
+
+                elif choice == '5':
+                    coords = input("Enter home coordinates as 'x,y': ").strip()
+                    try:
+                        x_str, y_str = coords.split(',')
+                        x_val = float(x_str.strip())
+                        y_val = float(y_str.strip())
+                        self.set_home_position(x_val, y_val)
+                    except ValueError:
+                        print("Invalid format. Use: x,y (e.g., 100,200)")
+
+                elif choice == '6':
+                    self.return_to_home()
+
+                elif choice == '7':
+                    confirm = input("This will home motors to physical limits. Continue? (y/n): ")
+                    if confirm.lower() == 'y':
+                        self.home_motors()
+                        # Update home position to 0,0 after physical homing
+                        self.home_x = 0.0
+                        self.home_y = 0.0
+
+                elif choice == '8':
+                    x, y = self.get_position()
+                    print(f"Current position: X={x:.2f}, Y={y:.2f}")
+
+                elif choice == '9':
+                    print("Exiting interactive mode...")
+                    break
+
+                else:
+                    print("Invalid choice. Please enter 1-9.")
+
+            except KeyboardInterrupt:
+                print("\n\nInterrupted. Exiting interactive mode...")
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+
+        print("="*60)
